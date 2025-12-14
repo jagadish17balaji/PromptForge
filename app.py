@@ -30,25 +30,32 @@ with st.sidebar:
     else:
         api_key = st.text_input("Enter Gemini API Key", type="password")
 
-    # 2. MODEL SELECTOR (The Fix for 404 Errors)
+    # 2. MODEL SELECTOR (Updated for Stability)
     st.subheader("🤖 Model Selection")
     
-    # Default fallback if API fails
-    model_options = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    # Hardcoded SAFE defaults (Flash is best for free tier)
+    # We put 1.5-flash FIRST so it is the default selection.
+    safe_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
     
-    # Try to fetch actual available models if key is present
+    model_options = safe_models # Default list
+    
+    # Try to fetch all available models, but KEEP safe ones at the top
     if api_key:
         try:
             genai.configure(api_key=api_key)
-            # List models that support content generation
-            available_models = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            # Prioritize newer models
-            available_models.sort(reverse=True)
-            if available_models:
-                model_options = available_models
-        except Exception:
-            pass # Fallback to hardcoded list if fetch fails
+            # Fetch valid models
+            all_models = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
             
+            # Filter out the safe ones so we don't duplicate them
+            other_models = [m for m in all_models if m not in safe_models]
+            
+            # Combine: Safe ones first, then others
+            model_options = safe_models + other_models
+            
+        except Exception:
+            pass # Use hardcoded list if fetch fails
+            
+    # Default to index 0 (gemini-1.5-flash) which is the most reliable free model
     selected_model = st.selectbox("Choose Model", model_options, index=0)
     
     st.markdown("---")
@@ -139,8 +146,13 @@ with col2:
                     st.caption("Copy the code above and paste it into your LLM chat.")
                     
             except Exception as e:
-                st.error(f"An error occurred: {e}")
-                st.info("Try selecting a different model (like gemini-1.5-flash) in the sidebar.")
+                # Specific Error Handling for Quota Issues
+                if "429" in str(e):
+                    st.error("📉 **Quota Exceeded (429 Error)**")
+                    st.warning("You have hit the free rate limit for this model. Please wait 60 seconds and try again, or switch to 'gemini-1.5-flash' in the sidebar.")
+                else:
+                    st.error(f"An error occurred: {e}")
+                    st.info("Try selecting a different model (like gemini-1.5-flash) in the sidebar.")
     else:
         st.info("The generated Masterprompt will appear here ready to copy.")
 
