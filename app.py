@@ -23,14 +23,33 @@ st.markdown("""
 with st.sidebar:
     st.title("⚙️ Configuration")
     
-    # SECURITY BEST PRACTICE:
-    # Try to load the key from secrets.toml first. 
-    # If not found, ask the user to input it manually.
+    # 1. SECURITY: Load Key
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
         st.success("✅ API Key loaded from Secrets")
     else:
-        api_key = st.text_input("Enter Gemini API Key", type="password", help="Get your key at aistudio.google.com")
+        api_key = st.text_input("Enter Gemini API Key", type="password")
+
+    # 2. MODEL SELECTOR (The Fix for 404 Errors)
+    st.subheader("🤖 Model Selection")
+    
+    # Default fallback if API fails
+    model_options = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    
+    # Try to fetch actual available models if key is present
+    if api_key:
+        try:
+            genai.configure(api_key=api_key)
+            # List models that support content generation
+            available_models = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            # Prioritize newer models
+            available_models.sort(reverse=True)
+            if available_models:
+                model_options = available_models
+        except Exception:
+            pass # Fallback to hardcoded list if fetch fails
+            
+    selected_model = st.selectbox("Choose Model", model_options, index=0)
     
     st.markdown("---")
     
@@ -47,7 +66,7 @@ with st.sidebar:
 def get_architect_prompt(user_task, detail_level):
     return f"""
     You are an Expert Prompt Engineer and LLM Architect. 
-    Your goal is to take a vague user request and transform it into a highly structured, professional "Masterprompt" optimized for Gemini Pro.
+    Your goal is to take a vague user request and transform it into a highly structured, professional "Masterprompt" optimized for Large Language Models.
     
     **USER REQUEST:**
     "{user_task}"
@@ -69,7 +88,7 @@ def get_architect_prompt(user_task, detail_level):
     """
 
 st.markdown('<div class="main-header">🔥 PromptForge</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-text">Transform vague ideas into powerful Masterprompts using Gemini Pro.</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-text">Transform vague ideas into powerful Masterprompts using Gemini.</div>', unsafe_allow_html=True)
 st.markdown("---")
 
 col1, col2 = st.columns([1, 1])
@@ -101,14 +120,14 @@ with col2:
                 # Configure Gemini with the secure key
                 genai.configure(api_key=api_key)
                 
-                # Use the Pro model (gemini-1.5-pro or gemini-pro)
-                model = genai.GenerativeModel('gemini-1.5-pro')
+                # Use the user-selected model
+                model = genai.GenerativeModel(selected_model)
                 
                 full_input = user_input
                 if audience: full_input += f"\n(Target Audience: {audience})"
                 if format_pref: full_input += f"\n(Format Preference: {format_pref})"
                 
-                with st.spinner("Architecting your prompt..."):
+                with st.spinner(f"Architecting with {selected_model}..."):
                     architect_instruction = get_architect_prompt(full_input, detail_level)
                     response = model.generate_content(
                         architect_instruction,
@@ -121,9 +140,10 @@ with col2:
                     
             except Exception as e:
                 st.error(f"An error occurred: {e}")
+                st.info("Try selecting a different model (like gemini-1.5-flash) in the sidebar.")
     else:
         st.info("The generated Masterprompt will appear here ready to copy.")
 
 # --- Footer ---
 st.markdown("---")
-st.caption("Powered by Google Gemini Pro | Built with Streamlit")
+st.caption("Powered by Google Gemini | Built with Streamlit")
